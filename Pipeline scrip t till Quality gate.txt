@@ -1,0 +1,59 @@
+pipeline {
+    agent any
+    
+    environment {
+        SONARQUBE_ENV = "sonar-server"
+        SONAR_SCANNER = tool 'SonarQube Scanner'
+    }
+
+    stages {
+        stage('Checkout Code') {
+            steps {
+                echo 'Checking out the code...'
+                checkout scm
+            }
+        }
+
+        stage('Build') {
+            steps {
+                echo 'Building the code...'
+                sh 'mvn clean install'
+            }
+        }
+
+        stage('SonarQube Analysis') {
+            steps {
+                withSonarQubeEnv('sonar-server') { // Configure SonarQube environment
+                    echo 'Running SonarQube analysis...'
+                    sh "${SONAR_SCANNER}/bin/sonar-scanner \
+                        -Dsonar.projectKey=your_project_key \
+                        -Dsonar.projectName=your_project_name \
+                        -Dsonar.sources=src \
+                        -Dsonar.host.url=http://your-sonarqube-url \
+                        -Dsonar.login=${env.sonar-token}"
+                }
+            }
+        }
+
+        stage('Quality Gate') {
+            steps {
+                script {
+                    echo 'Waiting for SonarQube quality gate...'
+                    timeout(time: 5, unit: 'MINUTES') {
+                        def qg = waitForQualityGate() 
+                        if (qg.status != 'OK') {
+                            error "Pipeline aborted due to quality gate failure: ${qg.status}"
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            echo 'Cleaning up...'
+            cleanWs() 
+        }
+    }
+}
